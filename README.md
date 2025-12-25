@@ -1,65 +1,63 @@
-# codelamp README
+# CodeLamp
 
-This is the README for your extension "codelamp". After writing up a brief description, we recommend including the following sections.
+Your personal AI code assistant powered by Google Gemini API directly in VS Code.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+**AI-Powered Code Help**
+- Get instant code reviews and suggestions
+- Generate, fix, and optimize your code
+- Real-time assistance while coding
 
-For example if there is an image subfolder under your extension project workspace:
+**Conversational Interface**
+- Chat with an AI assistant in a dedicated sidebar
+- Maintain conversation history
+- Load previous conversations anytime
 
-\!\[feature X\]\(images/feature-x.png\)
+**Secure API Management**
+- Store your Google Gemini API key securely
+- Easy key management from the sidebar
+- No data stored externally
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Installation
+
+1. Install the extension from VS Code Marketplace
+2. Open the CodeLamp sidebar (click the CodeLamp icon in the Activity Bar)
+3. Enter your Google Gemini API key
+4. Start chatting with your AI assistant!
+
+## Getting Your API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com)
+2. Create a free API key for Gemini
+3. Copy and paste it into CodeLamp settings
+
+## How to Use
+
+1. **Start a Conversation**: Type your coding question or request in the chat input
+2. **Get Help**: Ask CodeLamp to review, generate, fix, or explain code
+3. **Manage History**: View previous conversations and load them anytime
+4. **Clear Chat**: Start fresh with the "New Chat" button
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- VS Code 1.107.0 or higher
+- Google Gemini API key (free tier available)
 
-## Extension Settings
+## Privacy & Security
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- API keys are stored securely in VS Code's built-in secret storage
+- No conversation data is sent to third parties
+- Only your Gemini API key and prompts are sent to Google's API
 
-For example:
+## About
 
-This extension contributes the following settings:
+Built by [@erarbazansari](https://github.com/erarbazansari)
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## License
 
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+MIT License - see LICENSE file for details
 
 ---
 
-## Working with Markdown
-
-You can author your README using Visual Studio Code.  Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux)
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux)
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**Happy Coding! 🚀**
