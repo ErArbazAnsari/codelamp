@@ -51,6 +51,12 @@ class SidebarProvider {
                 case "newChat":
                     this.#resetSession();
                     break;
+                case "deleteConversation":
+                    this.#deleteConversation(
+                        data.conversationIndex,
+                        data.provider
+                    );
+                    break;
                 case "alert":
                     vscode.window.showErrorMessage(data.text);
                     break;
@@ -185,23 +191,50 @@ class SidebarProvider {
 
     async #addToHistory(provider, userMessage, assistantMessage) {
         try {
-            const history = await this.#getConversationHistory(provider);
-            history.push({
-                role: "user",
-                content: userMessage,
-                timestamp: new Date().toISOString(),
-            });
-            history.push({
-                role: "model",
-                content: assistantMessage,
-                timestamp: new Date().toISOString(),
-            });
+            const conversationsJson = await this.#context.globalState.get(
+                `codelamp_${provider}_conversations`
+            );
+            const conversations = conversationsJson
+                ? JSON.parse(conversationsJson)
+                : [];
 
-            // Keep only last 50 messages to avoid storage limits
-            const trimmedHistory = history.slice(-50);
+            // If this is a new session (no current session messages), create a new conversation
+            if (this.#currentSessionMessages.length === 0) {
+                conversations.push({
+                    messages: [
+                        {
+                            role: "user",
+                            content: userMessage,
+                        },
+                        {
+                            role: "model",
+                            content: assistantMessage,
+                        },
+                    ],
+                    timestamp: new Date().toISOString(),
+                });
+            } else {
+                // Add to existing conversation
+                const lastConversation =
+                    conversations[conversations.length - 1];
+                if (lastConversation) {
+                    lastConversation.messages.push({
+                        role: "user",
+                        content: userMessage,
+                    });
+                    lastConversation.messages.push({
+                        role: "model",
+                        content: assistantMessage,
+                    });
+                    lastConversation.timestamp = new Date().toISOString();
+                }
+            }
+
+            // Keep only last 20 conversations
+            const trimmedConversations = conversations.slice(-20);
             await this.#context.globalState.update(
-                `codelamp_${provider}_history`,
-                JSON.stringify(trimmedHistory)
+                `codelamp_${provider}_conversations`,
+                JSON.stringify(trimmedConversations)
             );
         } catch (error) {
             console.error("Error saving to history:", error);
@@ -210,32 +243,41 @@ class SidebarProvider {
 
     async #sendConversationHistory(provider) {
         try {
-            const historyJson = await this.#context.globalState.get(
-                `codelamp_${provider}_history`
+            const conversationsJson = await this.#context.globalState.get(
+                `codelamp_${provider}_conversations`
             );
-            const history = historyJson ? JSON.parse(historyJson) : [];
+            const allConversations = conversationsJson
+                ? JSON.parse(conversationsJson)
+                : [];
 
-            // Format history for display
-            const conversations = [];
-            for (let i = 0; i < history.length; i += 2) {
-                if (history[i] && history[i + 1]) {
+            // Reverse for display (most recent first)
+            const reversedConversations = allConversations.slice().reverse();
+
+            // Format conversations for display with correct indices
+            const conversations = reversedConversations.map(
+                (conv, displayIndex) => {
+                    const firstUserMessage = conv.messages.find(
+                        (m) => m.role === "user"
+                    );
                     const preview =
-                        history[i].content.substring(0, 40) +
-                        (history[i].content.length > 40 ? "..." : "");
-                    conversations.push({
-                        index: i,
+                        (firstUserMessage?.content || "").substring(0, 40) +
+                        ((firstUserMessage?.content || "").length > 40
+                            ? "..."
+                            : "");
+                    return {
+                        index: displayIndex,
                         preview: preview,
-                        timestamp:
-                            history[i + 1].timestamp ||
-                            new Date().toISOString(),
-                        messages: [history[i], history[i + 1]],
-                    });
+                        timestamp: conv.timestamp,
+                        messages: conv.messages,
+                        originalIndex:
+                            allConversations.length - 1 - displayIndex,
+                    };
                 }
-            }
+            );
 
             this.#view?.webview.postMessage({
                 command: "historyResponse",
-                conversations: conversations.reverse(),
+                conversations: conversations,
                 provider: provider,
             });
         } catch (error) {
@@ -250,26 +292,67 @@ class SidebarProvider {
 
     async #loadConversation(index, provider) {
         try {
-            const historyJson = await this.#context.globalState.get(
-                `codelamp_${provider}_history`
+            const conversationsJson = await this.#context.globalState.get(
+                `codelamp_${provider}_conversations`
             );
-            const history = historyJson ? JSON.parse(historyJson) : [];
+            const conversations = conversationsJson
+                ? JSON.parse(conversationsJson)
+                : [];
+            const originalIndex = conversations.length - 1 - index; // Convert display index to original array index
 
-            // Load the conversation pair
-            if (history[index] && history[index + 1]) {
+            // Load the conversation
+            if (conversations[originalIndex]) {
+                const conversation = conversations[originalIndex];
                 // Set session messages to loaded conversation
-                this.#currentSessionMessages = [
-                    history[index],
-                    history[index + 1],
-                ];
+                this.#currentSessionMessages = conversation.messages;
 
                 this.#view?.webview.postMessage({
                     command: "conversationLoaded",
-                    messages: [history[index], history[index + 1]],
+                    messages: conversation.messages,
                 });
             }
         } catch (error) {
             console.error("Error loading conversation:", error);
+        }
+    }
+
+    async #deleteConversation(index, provider) {
+        try {
+            const conversationsJson = await this.#context.globalState.get(
+                `codelamp_${provider}_conversations`
+            );
+            const conversations = conversationsJson
+                ? JSON.parse(conversationsJson)
+                : [];
+            const originalIndex = conversations.length - 1 - index; // Convert display index to original array index
+
+            // Remove the conversation
+            if (conversations[originalIndex] !== undefined) {
+                conversations.splice(originalIndex, 1);
+
+                // Update globalState
+                await this.#context.globalState.update(
+                    `codelamp_${provider}_conversations`,
+                    JSON.stringify(conversations)
+                );
+
+                // Clear session if the deleted conversation was loaded
+                if (this.#currentSessionMessages.length > 0) {
+                    this.#currentSessionMessages = [];
+                    this.#view?.webview.postMessage({
+                        command: "clearChat",
+                    });
+                }
+
+                // Send updated history to webview
+                this.#sendConversationHistory(provider);
+                vscode.window.showInformationMessage(
+                    "Conversation deleted successfully."
+                );
+            }
+        } catch (error) {
+            console.error("Error deleting conversation:", error);
+            vscode.window.showErrorMessage("Error deleting conversation.");
         }
     }
 
@@ -717,7 +800,7 @@ class SidebarProvider {
         <div id="menuOverlay" style="display: none;" class="fixed inset-0 z-40 bg-black/30"></div>
 
         <!-- Menu Sidebar -->
-        <div id="menuSidebar" style="display: none;" class="absolute top-0 left-0 h-full w-72 bg-[var(--vscode-editor-background)] border-r border-[var(--vscode-input-border)] flex flex-col z-50 shadow-lg">
+        <div id="menuSidebar" style="display: none;" class="absolute top-0 left-0 h-full w-full bg-[var(--vscode-editor-background)] border-r border-[var(--vscode-input-border)] flex flex-col z-50 shadow-lg">
             <!-- Header -->
             <div class="px-4 py-3 border-b border-[var(--vscode-input-border)] flex justify-between items-center">
                 <h3 class="text-sm font-bold flex items-center gap-2">
@@ -729,20 +812,18 @@ class SidebarProvider {
                 </button>
             </div>
 
-            <!-- New Chat Button -->
-            <button id="newChatBtn" class="m-3 px-4 py-2 rounded text-sm font-semibold bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] transition-colors flex items-center justify-center gap-2">
-                <i class="fas fa-plus"></i>
-                New Chat
-            </button>
-
             <!-- Conversations List -->
             <div id="historyList" class="flex-1 overflow-y-auto px-2"></div>
 
-            <!-- Footer - Settings & Clear -->
-            <div class="px-2 py-3 border-t border-[var(--vscode-input-border)] space-y-2">
-                <button id="menuSettingsBtn" class="w-full px-4 py-2 text-left text-sm font-semibold opacity-70 hover:opacity-100 hover:bg-opacity-20 hover:bg-white rounded transition-colors flex items-center gap-2">
+            <!-- Footer - Settings & New Chat -->
+            <div class="px-2 py-3 border-t border-[var(--vscode-input-border)] flex items-center justify-between gap-2">
+                <button id="menuSettingsBtn" class="px-4 py-2 text-sm font-semibold opacity-70 hover:opacity-100 hover:bg-opacity-20 hover:bg-white rounded transition-colors flex items-center gap-2">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
+                </button>
+                <button id="newChatBtn" class="px-4 py-2 rounded text-sm font-semibold bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] transition-colors flex items-center justify-center gap-2">
+                    <i class="fas fa-plus"></i>
+                    New Chat
                 </button>
             </div>
         </div>
@@ -858,15 +939,29 @@ class SidebarProvider {
             }
 
             conversations.forEach((conv, index) => {
+                const container = document.createElement('div');
+                container.className = 'w-full mx-auto my-1 rounded transition-all group relative flex items-center';
+                
                 const btn = document.createElement('button');
-                btn.className = 'w-full mx-auto my-1 px-3 py-2 text-left text-sm rounded transition-all border border-[var(--vscode-input-border)] flex flex-col gap-1 hover:border-[var(--vscode-focusBorder)] hover:bg-opacity-30';
+                btn.className = 'w-full px-3 py-2 text-left text-sm rounded transition-all border border-[var(--vscode-input-border)] opacity-80 flex flex-col gap-1 hover:opacity-100 hover:border-[var(--vscode-focusBorder)] hover:bg-opacity-30';
                 const dateStr = new Date(conv.timestamp).toLocaleDateString();
                 const timeStr = new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 btn.innerHTML = '<div class="truncate font-medium text-xs opacity-90">' + conv.preview + '</div><div class="text-xs opacity-50">' + dateStr + ' ' + timeStr + '</div>';
                 btn.onclick = () => {
                     vscode.postMessage({ command: "loadConversation", conversationIndex: conv.index, provider: currentProvider });
                 };
-                historyList.appendChild(btn);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'absolute right-2 p-1.5 text-xs opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    vscode.postMessage({ command: "deleteConversation", conversationIndex: conv.index, provider: currentProvider });
+                };
+                
+                container.appendChild(btn);
+                container.appendChild(deleteBtn);
+                historyList.appendChild(container);
             });
 
 
@@ -1093,6 +1188,12 @@ class SidebarProvider {
                     });
                     closeMenu();
                     messageInput.focus();
+                    break;
+                case "clearChat":
+                    chatMessages.innerHTML = '';
+                    isNewChatSession = true;
+                    showWelcomeTemplate();
+                    closeMenu();
                     break;
                 case "historyCleared":
                     if (msg.success) {
