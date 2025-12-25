@@ -6,6 +6,7 @@ class SidebarProvider {
     #view;
     #extensionUri;
     #context;
+    #currentSessionMessages = []; // Track only current session messages for AI
 
     constructor(extensionUri, context) {
         this.#extensionUri = extensionUri;
@@ -37,6 +38,18 @@ class SidebarProvider {
                     break;
                 case "sendMessage":
                     this.#handleChatMessage(data.message, data.provider);
+                    break;
+                case "getHistory":
+                    this.#sendConversationHistory(data.provider);
+                    break;
+                case "loadConversation":
+                    this.#loadConversation(
+                        data.conversationIndex,
+                        data.provider
+                    );
+                    break;
+                case "newChat":
+                    this.#resetSession();
                     break;
                 case "alert":
                     vscode.window.showErrorMessage(data.text);
@@ -117,14 +130,32 @@ class SidebarProvider {
         }
 
         try {
+            // Only send current session messages to AI (not previous sessions)
+            const history = this.#currentSessionMessages || [];
+
             let response;
             if (provider === "gemini") {
-                response = await generateResponse(apiKey, message);
+                response = await generateResponse(apiKey, message, history);
             } else if (provider === "openai") {
                 response = "OpenAI integration coming soon...";
             } else {
                 response = "Unknown provider";
             }
+
+            // Save to history
+            await this.#addToHistory(provider, message, response);
+
+            // Add to current session
+            if (!this.#currentSessionMessages)
+                this.#currentSessionMessages = [];
+            this.#currentSessionMessages.push({
+                role: "user",
+                content: message,
+            });
+            this.#currentSessionMessages.push({
+                role: "model",
+                content: response,
+            });
 
             this.#view?.webview.postMessage({
                 command: "messageReceived",
@@ -141,6 +172,111 @@ class SidebarProvider {
         }
     }
 
+    async #getConversationHistory(provider) {
+        try {
+            const historyJson = await this.#context.globalState.get(
+                `codelamp_${provider}_history`
+            );
+            return historyJson ? JSON.parse(historyJson) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    async #addToHistory(provider, userMessage, assistantMessage) {
+        try {
+            const history = await this.#getConversationHistory(provider);
+            history.push({
+                role: "user",
+                content: userMessage,
+                timestamp: new Date().toISOString(),
+            });
+            history.push({
+                role: "model",
+                content: assistantMessage,
+                timestamp: new Date().toISOString(),
+            });
+
+            // Keep only last 50 messages to avoid storage limits
+            const trimmedHistory = history.slice(-50);
+            await this.#context.globalState.update(
+                `codelamp_${provider}_history`,
+                JSON.stringify(trimmedHistory)
+            );
+        } catch (error) {
+            console.error("Error saving to history:", error);
+        }
+    }
+
+    async #sendConversationHistory(provider) {
+        try {
+            const historyJson = await this.#context.globalState.get(
+                `codelamp_${provider}_history`
+            );
+            const history = historyJson ? JSON.parse(historyJson) : [];
+
+            // Format history for display
+            const conversations = [];
+            for (let i = 0; i < history.length; i += 2) {
+                if (history[i] && history[i + 1]) {
+                    const preview =
+                        history[i].content.substring(0, 40) +
+                        (history[i].content.length > 40 ? "..." : "");
+                    conversations.push({
+                        index: i,
+                        preview: preview,
+                        timestamp:
+                            history[i + 1].timestamp ||
+                            new Date().toISOString(),
+                        messages: [history[i], history[i + 1]],
+                    });
+                }
+            }
+
+            this.#view?.webview.postMessage({
+                command: "historyResponse",
+                conversations: conversations.reverse(),
+                provider: provider,
+            });
+        } catch (error) {
+            console.error("Error sending conversation history:", error);
+            this.#view?.webview.postMessage({
+                command: "historyResponse",
+                conversations: [],
+                provider: provider,
+            });
+        }
+    }
+
+    async #loadConversation(index, provider) {
+        try {
+            const historyJson = await this.#context.globalState.get(
+                `codelamp_${provider}_history`
+            );
+            const history = historyJson ? JSON.parse(historyJson) : [];
+
+            // Load the conversation pair
+            if (history[index] && history[index + 1]) {
+                // Set session messages to loaded conversation
+                this.#currentSessionMessages = [
+                    history[index],
+                    history[index + 1],
+                ];
+
+                this.#view?.webview.postMessage({
+                    command: "conversationLoaded",
+                    messages: [history[index], history[index + 1]],
+                });
+            }
+        } catch (error) {
+            console.error("Error loading conversation:", error);
+        }
+    }
+
+    #resetSession() {
+        this.#currentSessionMessages = [];
+    }
+
     #getHtmlForWebview(_webview) {
         const nonce = getNonce();
 
@@ -149,9 +285,13 @@ class SidebarProvider {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https:; script-src 'nonce-${nonce}' https://cdn.tailwindcss.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https:; script-src 'nonce-${nonce}' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; font-src https: data:;">
     <title>Code Lamp</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -170,40 +310,51 @@ class SidebarProvider {
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
             border: 1px solid var(--vscode-input-border);
-            border-radius: 4px;
+            border-radius: 6px;
             font-family: inherit;
             font-size: inherit;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         
         input:focus, select:focus, textarea:focus {
             border-color: var(--vscode-focusBorder);
             outline: none;
-            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        textarea {
+            line-height: 1.4;
+            padding: 8px 10px;
+            max-height: 120px;
+            overflow-y: auto;
         }
         
         button {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: 1px solid transparent;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s ease;
             font-family: inherit;
             font-size: inherit;
             font-weight: 500;
+            user-select: none;
         }
         
         button:hover:not(:disabled) {
             background-color: var(--vscode-button-hoverBackground);
+            transform: translateY(-1px);
         }
         
         button:active:not(:disabled) {
-            opacity: 0.8;
+            transform: translateY(0);
+            opacity: 0.9;
         }
-        
+
         button:disabled {
-            opacity: 0.5;
             cursor: not-allowed;
+            opacity: 0.5;
         }
         
         .btn-secondary {
@@ -214,34 +365,182 @@ class SidebarProvider {
         .btn-secondary:hover:not(:disabled) {
             background-color: var(--vscode-button-secondaryHoverBackground);
         }
-        
-        .message-user {
+
+        /* Message Container Styles */
+        .message-wrapper {
+            display: flex;
+            margin-bottom: 12px;
+            gap: 8px;
+            animation: slideIn 0.3s ease;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .message-wrapper.user {
+            flex-direction: row-reverse;
+            justify-content: flex-start;
+        }
+
+        .message-wrapper.assistant {
+            flex-direction: row;
+        }
+
+        .message-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .message-wrapper.user .message-avatar {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
-            border-radius: 8px;
-            padding: 10px 12px;
-            max-width: 85%;
-            margin-left: auto;
-            word-wrap: break-word;
-            animation: slideIn 0.2s ease;
+        }
+
+        .message-wrapper.assistant .message-avatar {
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-input-border);
+            color: var(--vscode-editor-foreground);
+        }
+
+        .message-content {
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            width: 100%;
+            gap: 4px;
+            word-break: break-word;
+            overflow: hidden;
+        }
+
+        .message-wrapper.user .message-content {
+            align-items: flex-end;
+        }
+
+        .message-wrapper.assistant .message-content {
+            align-items: flex-start;
         }
         
+        .message-user {
+            background: linear-gradient(135deg, var(--vscode-button-background) 0%, var(--vscode-button-hoverBackground) 100%);
+            color: var(--vscode-button-foreground);
+            border-radius: 12px;
+            padding: 12px 14px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+            line-height: 1.4;
+            font-size: 0.95rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+
         .message-assistant {
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             border: 1px solid var(--vscode-input-border);
-            border-radius: 8px;
-            padding: 10px 12px;
-            max-width: 85%;
+            border-radius: 12px;
+            padding: 12px 14px;
             word-wrap: break-word;
-            animation: slideIn 0.2s ease;
+            overflow-wrap: break-word;
+            white-space: normal;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            overflow: hidden;
+        }
+        
+        .message-assistant:hover {
+            border-color: var(--vscode-focusBorder);
+            background-color: var(--vscode-editor-background);
+        }
+        
+        .message-assistant pre {
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 6px;
+            padding: 12px;
+            margin: 8px 0;
+            overflow-x: hidden;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-width: 100%;
+        }
+        
+        .message-assistant code {
+            font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        
+        .message-assistant pre code {
+            background-color: transparent;
+            border: none;
+            padding: 0;
+            color: inherit;
         }
         
         .message-system {
-            font-size: 0.8rem;
+            font-size: 0.85rem;
+            opacity: 0.7;
+            padding: 12px 16px;
+            margin: 12px 0;
+            color: var(--vscode-editor-foreground);
+        }
+
+        .message-system.thinking {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .thinking-dots {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .thinking-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: currentColor;
             opacity: 0.6;
-            text-align: center;
-            padding: 8px;
+            animation: thinking-bounce 1.4s infinite ease-in-out;
+        }
+
+        .thinking-dot:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .thinking-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .thinking-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes thinking-bounce {
+            0%, 60%, 100% {
+                opacity: 0.6;
+                transform: translateY(0);
+            }
+            30% {
+                opacity: 1;
+                transform: translateY(-6px);
+            }
+        }
+
+        .message-wrapper.system .message-avatar {
+            color: var(--vscode-focusBorder);
         }
         
         @keyframes slideIn {
@@ -253,6 +552,60 @@ class SidebarProvider {
                 opacity: 1;
                 transform: translateY(0);
             }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        #welcomeTemplate {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 16px;
+            opacity: 0.6;
+            animation: fadeIn 0.3s ease;
+        }
+
+        #welcomeTemplate .welcome-icon {
+            font-size: 3rem;
+            opacity: 0.4;
+        }
+
+        #welcomeTemplate .welcome-text {
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        #welcomeTemplate .welcome-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        #welcomeTemplate .welcome-subtitle {
+            opacity: 0.6;
+            font-size: 0.85rem;
+            max-width: 250px;
+            line-height: 1.4;
+        }
+
+        @keyframes fadeIn {
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .message-wrapper.system {
+            animation: fadeIn 0.3s ease;
         }
         
         .screen-heading {
@@ -271,6 +624,21 @@ class SidebarProvider {
             font-size: 3rem;
             margin-bottom: 12px;
         }
+
+        #menuSidebar {
+            animation: slideInMenu 0.3s ease;
+            position: fixed;
+            z-index: 50;
+        }
+
+        @keyframes slideInMenu {
+            from {
+                transform: translateX(-100%);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
     </style>
 </head>
 <body class="h-screen overflow-hidden">
@@ -287,12 +655,12 @@ class SidebarProvider {
     <!-- Welcome Screen -->
     <div id="welcomeScreen" class="flex flex-col h-full p-6">
         <div class="flex flex-col items-center justify-center flex-1">
-            <div class="icon-large">💡</div>
+            <div class="icon-large"><i class="fas fa-lightbulb" style="color: #fbbf24;"></i></div>
             <h1 class="screen-heading">CodeLamp</h1>
             <p class="screen-subtitle">Your Personal AI Code Assistant</p>
             <div class="w-full max-w-sm p-4 mb-8 rounded-lg border border-[var(--vscode-input-border)]">
                 <div class="flex gap-3 items-start">
-                    <div class="text-lg flex-shrink-0 mt-0.5">🔒</div>
+                    <div class="text-lg flex-shrink-0 mt-0.5"><i class="fas fa-lock"></i></div>
                     <div>
                         <p class="text-sm font-semibold mb-1">Privacy First</p>
                         <p class="text-xs opacity-70">API keys are stored securely in VS Code's secret storage</p>
@@ -319,7 +687,9 @@ class SidebarProvider {
                     <label class="block text-xs font-semibold mb-2 opacity-70">API Key</label>
                     <div class="relative">
                         <input id="apiKeyInput" type="password" class="w-full px-3 py-2 pr-10" placeholder="Enter your API key..." />
-                        <button id="togglePasswordBtn" type="button" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 bg-transparent hover:bg-transparent border-0 text-sm p-0 h-6 w-6 flex items-center justify-center">👁️</button>
+                        <button id="togglePasswordBtn" type="button" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 bg-transparent hover:bg-transparent border-0 text-sm p-0 h-6 w-6 flex items-center justify-center text-lg">
+                            <i class="fas fa-eye"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="flex gap-2 mt-2">
@@ -338,20 +708,59 @@ class SidebarProvider {
     <div id="chatScreen" style="display: none;" class="flex flex-col h-full">
         <div class="px-4 py-3 border-b border-[var(--vscode-input-border)] flex justify-between items-center">
             <h2 class="text-xs font-bold uppercase tracking-wide opacity-70">Chat</h2>
-            <button id="settingsBtn" class="opacity-70 hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center" title="Settings">
-                <svg class="w-5 h-5" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                     <path fill-rule="evenodd" d="M17 10v1.126c.367.095.714.24 1.032.428l.796-.797 1.415 1.415-.797.796c.188.318.333.665.428 1.032H21v2h-1.126c-.095.367-.24.714-.428 1.032l.797.796-1.415 1.415-.796-.797a3.979 3.979 0 0 1-1.032.428V20h-2v-1.126a3.977 3.977 0 0 1-1.032-.428l-.796.797-1.415-1.415.797-.796A3.975 3.975 0 0 1 12.126 16H11v-2h1.126c.095-.367.24-.714.428-1.032l-.797-.796 1.415-1.415.796.797A3.977 3.977 0 0 1 15 11.126V10h2Zm.406 3.578.016.016c.354.358.574.85.578 1.392v.028a2 2 0 0 1-3.409 1.406l-.01-.012a2 2 0 0 1 2.826-2.83ZM5 8a4 4 0 1 1 7.938.703 7.029 7.029 0 0 0-3.235 3.235A4 4 0 0 1 5 8Zm4.29 5H7a4 4 0 0 0-4 4v1a2 2 0 0 0 2 2h6.101A6.979 6.979 0 0 1 9 15c0-.695.101-1.366.29-2Z" clip-rule="evenodd"/>
-                </svg>
+            <button id="menuBtn" class="opacity-70 hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg" title="Menu">
+                <i class="fas fa-bars"></i>
             </button>
         </div>
-        <div id="chatMessages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3"></div>
-        <div class="px-4 py-3 border-t border-[var(--vscode-input-border)]">
-            <div class="flex gap-2">
+
+        <!-- Menu Overlay -->
+        <div id="menuOverlay" style="display: none;" class="fixed inset-0 z-40 bg-black/30"></div>
+
+        <!-- Menu Sidebar -->
+        <div id="menuSidebar" style="display: none;" class="absolute top-0 left-0 h-full w-72 bg-[var(--vscode-editor-background)] border-r border-[var(--vscode-input-border)] flex flex-col z-50 shadow-lg">
+            <!-- Header -->
+            <div class="px-4 py-3 border-b border-[var(--vscode-input-border)] flex justify-between items-center">
+                <h3 class="text-sm font-bold flex items-center gap-2">
+                    <i class="fas fa-comments text-[#60a5fa]"></i>
+                    <span>Conversations</span>
+                </h3>
+                <button id="closeMenuBtn" class="opacity-70 hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- New Chat Button -->
+            <button id="newChatBtn" class="m-3 px-4 py-2 rounded text-sm font-semibold bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-plus"></i>
+                New Chat
+            </button>
+
+            <!-- Conversations List -->
+            <div id="historyList" class="flex-1 overflow-y-auto px-2"></div>
+
+            <!-- Footer - Settings & Clear -->
+            <div class="px-2 py-3 border-t border-[var(--vscode-input-border)] space-y-2">
+                <button id="menuSettingsBtn" class="w-full px-4 py-2 text-left text-sm font-semibold opacity-70 hover:opacity-100 hover:bg-opacity-20 hover:bg-white rounded transition-colors flex items-center gap-2">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+            <div id="welcomeTemplate">
+                <div class="welcome-icon"><i class="fas fa-lightbulb"></i></div>
+                <div class="welcome-text">
+                    <div class="welcome-title">Welcome to CodeLamp</div>
+                    <div class="welcome-subtitle">Ask me anything about code, debugging, or get help with your projects</div>
+                </div>
+            </div>
+        </div>
+        <div class="px-4 py-3 border-t border-[var(--vscode-input-border)] bg-[rgba(0,0,0,0.2)]">
+            <div class="flex gap-2 items-flex-end">
                 <textarea id="messageInput" class="flex-1 px-3 py-2 text-sm resize-none" rows="1" placeholder="Type your query here..."></textarea>
-                <button id="sendBtn" class="px-3 py-2 flex items-center justify-center flex-shrink-0" title="Send">
-                    <svg class="w-5 h-5" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.41,22.99 3.50612381,23.1 4.13399899,22.8429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.16798184 C3.34915502,0.9108844 2.40734225,1.01698301 1.77946707,1.4882751 C0.994623095,2.11700993 0.837654326,3.20638099 1.15159189,3.99186788 L3.03521743,10.4328608 C3.03521743,10.5899582 3.19218622,10.7470556 3.50612381,10.7470556 L16.6915026,11.5325425 C16.6915026,11.5325425 17.1624089,11.5325425 17.1624089,12.0038346 C17.1624089,12.4744748 16.6915026,12.4744748 16.6915026,12.4744748 Z"/>
-                    </svg>
+                <button id="sendBtn" class="px-3 py-2 flex items-center justify-center flex-shrink-0 text-lg h-10 rounded" title="Send (Shift+Enter for new line)">
+                    <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
         </div>
@@ -369,14 +778,21 @@ class SidebarProvider {
         const togglePasswordBtn = document.getElementById("togglePasswordBtn");
         const providerSelect = document.getElementById("providerSelect");
         const saveKeyBtn = document.getElementById("saveKeyBtn");
-        const settingsBtn = document.getElementById("settingsBtn");
         const messageInput = document.getElementById("messageInput");
         const sendBtn = document.getElementById("sendBtn");
         const chatMessages = document.getElementById("chatMessages");
         const setupSpinner = document.getElementById("setupSpinner");
+        const menuBtn = document.getElementById("menuBtn");
+        const menuOverlay = document.getElementById("menuOverlay");
+        const menuSidebar = document.getElementById("menuSidebar");
+        const closeMenuBtn = document.getElementById("closeMenuBtn");
+        const historyList = document.getElementById("historyList");
+        const newChatBtn = document.getElementById("newChatBtn");
+        const menuSettingsBtn = document.getElementById("menuSettingsBtn");
 
         let currentProvider = "gemini";
         let passwordVisible = false;
+        let isNewChatSession = true;  // Track if current chat is a new session
 
         showScreen("loading");
         vscode.postMessage({ command: "getApiKey" });
@@ -386,10 +802,75 @@ class SidebarProvider {
             if (chatMessages.children.length > 0) showScreen("chat");
             else showScreen("welcome");
         };
-        settingsBtn.onclick = () => {
+        
+        // Menu handlers
+        menuBtn.onclick = () => toggleMenu();
+        closeMenuBtn.onclick = () => closeMenu();
+        menuOverlay.onclick = () => closeMenu();
+        newChatBtn.onclick = () => {
+            closeMenu();
+            chatMessages.innerHTML = '';
+            const welcomeTemplate = document.getElementById('welcomeTemplate');
+            if (welcomeTemplate) {
+                welcomeTemplate.remove();
+            }
+            const newWelcome = document.createElement('div');
+            newWelcome.id = 'welcomeTemplate';
+            newWelcome.innerHTML = '<div class="welcome-icon"><i class="fas fa-lightbulb"></i></div><div class="welcome-text"><div class="welcome-title">Welcome to CodeLamp</div><div class="welcome-subtitle">Ask me anything about code, debugging, or get help with your projects</div></div>';
+            newWelcome.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; opacity: 0.6;';
+            chatMessages.appendChild(newWelcome);
+            isNewChatSession = true;
+            vscode.postMessage({ command: "newChat" });
+            messageInput.focus();
+        };
+        menuSettingsBtn.onclick = () => {
+            closeMenu();
             showScreen("setup");
             vscode.postMessage({ command: "getApiKey" });
         };
+
+        function toggleMenu() {
+            if (menuSidebar.style.display === 'flex') {
+                closeMenu();
+            } else {
+                menuSidebar.style.display = 'flex';
+                menuOverlay.style.display = 'block';
+                loadHistoryList();
+            }
+        }
+
+        function closeMenu() {
+            menuSidebar.style.display = 'none';
+            menuOverlay.style.display = 'none';
+        }
+
+        function loadHistoryList() {
+            // Request history from backend
+            vscode.postMessage({ command: "getHistory", provider: currentProvider });
+        }
+
+        function renderHistoryList(conversations) {
+            historyList.innerHTML = '';
+            
+            if (conversations.length === 0) {
+                historyList.innerHTML = '<div class="px-4 py-8 text-center text-xs opacity-50 flex flex-col items-center gap-2"><i class="fas fa-comments text-lg opacity-30"></i><span>No conversations yet</span></div>';
+                return;
+            }
+
+            conversations.forEach((conv, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full mx-auto my-1 px-3 py-2 text-left text-sm rounded transition-all border border-[var(--vscode-input-border)] flex flex-col gap-1 hover:border-[var(--vscode-focusBorder)] hover:bg-opacity-30';
+                const dateStr = new Date(conv.timestamp).toLocaleDateString();
+                const timeStr = new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                btn.innerHTML = '<div class="truncate font-medium text-xs opacity-90">' + conv.preview + '</div><div class="text-xs opacity-50">' + dateStr + ' ' + timeStr + '</div>';
+                btn.onclick = () => {
+                    vscode.postMessage({ command: "loadConversation", conversationIndex: conv.index, provider: currentProvider });
+                };
+                historyList.appendChild(btn);
+            });
+
+
+        }
 
         function showScreen(name) {
             loadingScreen.style.display = 'none';
@@ -401,7 +882,22 @@ class SidebarProvider {
             if (name === 'setup') setupScreen.style.display = 'flex';
             if (name === 'chat') {
                 chatScreen.style.display = 'flex';
+                showWelcomeTemplate();
                 messageInput.focus();
+            }
+        }
+
+        function showWelcomeTemplate() {
+            const welcomeTemplate = document.getElementById('welcomeTemplate');
+            if (chatMessages.children.length === 1 && welcomeTemplate) {
+                welcomeTemplate.style.display = 'flex';
+            }
+        }
+
+        function hideWelcomeTemplate() {
+            const welcomeTemplate = document.getElementById('welcomeTemplate');
+            if (welcomeTemplate) {
+                welcomeTemplate.style.display = 'none';
             }
         }
 
@@ -410,7 +906,7 @@ class SidebarProvider {
             apiKeyInput.value = '';
             passwordVisible = false;
             apiKeyInput.type = 'password';
-            togglePasswordBtn.textContent = '👁️';
+            togglePasswordBtn.innerHTML = '<i class="fas fa-eye"></i>';
             vscode.postMessage({ command: "getApiKey" });
         };
 
@@ -418,7 +914,7 @@ class SidebarProvider {
             e.preventDefault();
             passwordVisible = !passwordVisible;
             apiKeyInput.type = passwordVisible ? 'text' : 'password';
-            togglePasswordBtn.textContent = passwordVisible ? '🙈' : '👁️';
+            togglePasswordBtn.innerHTML = passwordVisible ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
         };
 
         saveKeyBtn.onclick = () => {
@@ -431,8 +927,12 @@ class SidebarProvider {
         function sendMessage() {
             const text = messageInput.value.trim();
             if (!text) return;
+            hideWelcomeTemplate();
             addMessage(text, 'user');
             messageInput.value = "";
+            messageInput.style.height = 'auto';
+            sendBtn.disabled = true;
+            sendBtn.style.opacity = '0.5';
             vscode.postMessage({ command: "sendMessage", message: text, provider: currentProvider });
             addMessage("Thinking...", 'system');
         }
@@ -445,17 +945,85 @@ class SidebarProvider {
             }
         };
 
+        // Auto-grow textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            const newHeight = Math.min(this.scrollHeight, 120);
+            this.style.height = newHeight + 'px';
+        });
+
         function addMessage(text, sender) {
+            // Create wrapper
+            const wrapper = document.createElement("div");
+            wrapper.className = 'message-wrapper ' + sender;
+            
+            // Create avatar
+            const avatar = document.createElement("div");
+            avatar.className = "message-avatar";
+            if (sender === 'user') {
+                avatar.innerHTML = '<i class="fas fa-user"></i>';
+            } else if (sender === 'system') {
+                avatar.style.display = 'none';
+            } else {
+                avatar.innerHTML = '<i class="fas fa-robot"></i>';
+            }
+            
+            // Create content container
+            const content = document.createElement("div");
+            content.className = "message-content";
+            
+            // Create message div
             const div = document.createElement("div");
             if (sender === 'user') {
                 div.className = "message-user";
+                div.textContent = text;
             } else if (sender === 'system') {
                 div.className = "message-system";
+                // Check if this is a thinking message
+                if (text === "Thinking...") {
+                    div.classList.add('thinking');
+                    
+                    const dotsContainer = document.createElement('span');
+                    dotsContainer.className = 'thinking-dots';
+                    for (let i = 0; i < 3; i++) {
+                        const dot = document.createElement('span');
+                        dot.className = 'thinking-dot';
+                        dotsContainer.appendChild(dot);
+                    }
+                    div.appendChild(dotsContainer);
+                } else {
+                    div.textContent = text;
+                }
             } else {
                 div.className = "message-assistant";
+                try {
+                    if (typeof marked !== 'undefined') {
+                        // Configure marked for safe rendering
+                        marked.setOptions({
+                            breaks: true,
+                            gfm: true,
+                            headerIds: false
+                        });
+                        div.innerHTML = marked.parse(text);
+                        // Highlight code blocks
+                        if (typeof hljs !== 'undefined') {
+                            div.querySelectorAll('pre code').forEach(block => {
+                                hljs.highlightElement(block);
+                            });
+                        }
+                    } else {
+                        div.textContent = text;
+                    }
+                } catch (e) {
+                    console.error('Markdown parsing error:', e);
+                    div.textContent = text;
+                }
             }
-            div.textContent = text;
-            chatMessages.appendChild(div);
+            
+            content.appendChild(div);
+            wrapper.appendChild(avatar);
+            wrapper.appendChild(content);
+            chatMessages.appendChild(wrapper);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
@@ -468,10 +1036,11 @@ class SidebarProvider {
                         apiKeyInput.value = savedKey;
                         apiKeyInput.type = 'password';
                         passwordVisible = false;
-                        togglePasswordBtn.textContent = '👁️';
+                        togglePasswordBtn.innerHTML = '<i class="fas fa-eye"></i>';
                         if (setupScreen.style.display !== 'flex') {
+                            // Request history to load last conversation
+                            vscode.postMessage({ command: "getHistory", provider: currentProvider });
                             showScreen("chat");
-                            addMessage("Welcome back! Ready to code.", "assistant");
                         }
                     } else {
                         if (setupScreen.style.display !== 'flex' && chatScreen.style.display !== 'flex') {
@@ -480,7 +1049,7 @@ class SidebarProvider {
                         apiKeyInput.value = '';
                         apiKeyInput.type = 'password';
                         passwordVisible = false;
-                        togglePasswordBtn.textContent = '👁️';
+                        togglePasswordBtn.innerHTML = '<i class="fas fa-eye"></i>';
                     }
                     break;
                 case "apiKeySaved":
@@ -491,7 +1060,6 @@ class SidebarProvider {
                             showScreen("welcome");
                         } else {
                             showScreen("chat");
-                            addMessage("Welcome! Ready to code.", "assistant");
                         }
                     }
                     break;
@@ -499,11 +1067,45 @@ class SidebarProvider {
                     showScreen("welcome");
                     break;
                 case "messageReceived":
-                    const lastMessage = chatMessages.lastElementChild;
-                    if (lastMessage && lastMessage.textContent === "Thinking...") {
-                        lastMessage.remove();
-                    }
+                    // Remove "Thinking..." message
+                    const messages = chatMessages.querySelectorAll('.message-system.thinking');
+                    messages.forEach(msg => msg.remove());
+                    
                     addMessage(msg.message, msg.sender);
+                    sendBtn.disabled = false;
+                    sendBtn.style.opacity = '1';
+                    messageInput.focus();
+                    break;
+                case "historyResponse":
+                    renderHistoryList(msg.conversations);
+                    // Auto-load last conversation on extension start
+                    if (msg.conversations && msg.conversations.length > 0 && isNewChatSession) {
+                        const lastConversation = msg.conversations[0]; // First item is most recent (reversed in backend)
+                        vscode.postMessage({ command: "loadConversation", conversationIndex: lastConversation.index, provider: currentProvider });
+                    }
+                    break;
+                case "conversationLoaded":
+                    hideWelcomeTemplate();
+                    chatMessages.innerHTML = '';
+                    isNewChatSession = false;
+                    msg.messages.forEach(msgItem => {
+                        addMessage(msgItem.content, msgItem.role === 'user' ? 'user' : 'assistant');
+                    });
+                    closeMenu();
+                    messageInput.focus();
+                    break;
+                case "historyCleared":
+                    if (msg.success) {
+                        chatMessages.innerHTML = '';
+                        isNewChatSession = true;
+                        addMessage("Conversation history cleared. Ready for a new chat!", "system");
+                        setTimeout(() => {
+                            loadHistoryList();
+                            closeMenu();
+                        }, 300);
+                    } else {
+                        addMessage("Error clearing history.", "system");
+                    }
                     break;
             }
         });
