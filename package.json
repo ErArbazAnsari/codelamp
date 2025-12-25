@@ -25,7 +25,7 @@
                 {
                     "type": "webview",
                     "id": "codelamp.sidebarWebView",
-                    "name": "codelamp chat"
+                    "name": "Your Personal AI Code Assistant"
                 }
             ]
         },

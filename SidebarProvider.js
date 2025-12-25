@@ -336,13 +336,11 @@ class SidebarProvider {
                     JSON.stringify(conversations)
                 );
 
-                // Clear session if the deleted conversation was loaded
-                if (this.#currentSessionMessages.length > 0) {
-                    this.#currentSessionMessages = [];
-                    this.#view?.webview.postMessage({
-                        command: "clearChat",
-                    });
-                }
+                // Clear the current chat session
+                this.#currentSessionMessages = [];
+                this.#view?.webview.postMessage({
+                    command: "clearChat",
+                });
 
                 // Send updated history to webview
                 this.#sendConversationHistory(provider);
@@ -406,10 +404,25 @@ class SidebarProvider {
         }
 
         textarea {
-            line-height: 1.4;
-            padding: 8px 10px;
+            line-height: 1.5;
+            padding: 11px 13px;
             max-height: 120px;
             overflow-y: auto;
+            background-color: var(--vscode-input-background);
+            border-radius: 8px;
+            resize: none;
+            font-size: inherit;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        textarea:hover {
+            border-color: var(--vscode-input-border);
+        }
+        
+        textarea:focus {
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
         }
         
         button {
@@ -427,7 +440,38 @@ class SidebarProvider {
         
         button:hover:not(:disabled) {
             background-color: var(--vscode-button-hoverBackground);
+        }
+        
+        #sendBtn {
+            background: linear-gradient(135deg, var(--vscode-button-background) 0%, var(--vscode-button-hoverBackground) 100%);
+            padding: 11px 13px;
+            min-width: 44px;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--vscode-button-foreground);
+        }
+        
+        #sendBtn:hover:not(:disabled) {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
             transform: translateY(-1px);
+        }
+        
+        #sendBtn:active:not(:disabled) {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+            transform: translateY(0);
+        }
+        
+        #sendBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         button:active:not(:disabled) {
@@ -452,8 +496,8 @@ class SidebarProvider {
         /* Message Container Styles */
         .message-wrapper {
             display: flex;
-            margin-bottom: 12px;
-            gap: 8px;
+            margin-bottom: 6px;
+            gap: 6px;
             animation: slideIn 0.3s ease;
             width: 100%;
             min-width: 0;
@@ -469,15 +513,15 @@ class SidebarProvider {
         }
 
         .message-avatar {
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 12px;
             flex-shrink: 0;
-            margin-top: 2px;
+            margin-top: 1px;
         }
 
         .message-wrapper.user .message-avatar {
@@ -496,7 +540,7 @@ class SidebarProvider {
             flex-direction: column;
             max-width: 100%;
             width: 100%;
-            gap: 4px;
+            gap: 0;
             word-break: break-word;
             overflow: hidden;
         }
@@ -512,14 +556,14 @@ class SidebarProvider {
         .message-user {
             background: linear-gradient(135deg, var(--vscode-button-background) 0%, var(--vscode-button-hoverBackground) 100%);
             color: var(--vscode-button-foreground);
-            border-radius: 12px;
-            padding: 12px 14px;
+            border-radius: 10px;
+            padding: 10px 12px;
             word-wrap: break-word;
             overflow-wrap: break-word;
             white-space: pre-wrap;
             line-height: 1.4;
-            font-size: 0.95rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            font-size: 0.93rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
             overflow: hidden;
         }
         
@@ -528,13 +572,13 @@ class SidebarProvider {
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             border: 1px solid var(--vscode-input-border);
-            border-radius: 12px;
-            padding: 12px 14px;
+            border-radius: 10px;
+            padding: 10px 12px;
             word-wrap: break-word;
             overflow-wrap: break-word;
             white-space: normal;
             line-height: 1.5;
-            font-size: 0.95rem;
+            font-size: 0.93rem;
             overflow: hidden;
         }
         
@@ -572,8 +616,8 @@ class SidebarProvider {
         .message-system {
             font-size: 0.85rem;
             opacity: 0.7;
-            padding: 12px 16px;
-            margin: 12px 0;
+            padding: 8px 12px;
+            margin: 4px 0;
             color: var(--vscode-editor-foreground);
         }
 
@@ -736,53 +780,106 @@ class SidebarProvider {
     </div>
 
     <!-- Welcome Screen -->
-    <div id="welcomeScreen" class="flex flex-col h-full p-6">
+    <div id="welcomeScreen" class="flex flex-col h-full p-6 bg-[var(--vscode-editor-background)]">
         <div class="flex flex-col items-center justify-center flex-1">
-            <div class="icon-large"><i class="fas fa-lightbulb" style="color: #fbbf24;"></i></div>
-            <h1 class="screen-heading">CodeLamp</h1>
-            <p class="screen-subtitle">Your Personal AI Code Assistant</p>
-            <div class="w-full max-w-sm p-4 mb-8 rounded-lg border border-[var(--vscode-input-border)]">
-                <div class="flex gap-3 items-start">
-                    <div class="text-lg flex-shrink-0 mt-0.5"><i class="fas fa-lock"></i></div>
-                    <div>
-                        <p class="text-sm font-semibold mb-1">Privacy First</p>
-                        <p class="text-xs opacity-70">API keys are stored securely in VS Code's secret storage</p>
+            <!-- Icon -->
+            <div class="mb-6">
+                <div class="text-6xl flex items-center justify-center"><i class="fas fa-lightbulb" style="color: #cacdd3;"></i></div>
+            </div>
+
+            <!-- Heading -->
+            <div class="text-center mb-4">
+                <h1 class="text-3xl font-bold mb-2">CodeLamp</h1>
+                <p class="text-sm opacity-70">Your Personal AI Code Assistant</p>
+            </div>
+
+            <!-- Privacy Card -->
+            <div class="w-full max-w-sm mb-10 rounded-xl border border-[var(--vscode-input-border)] bg-gradient-to-br from-[var(--vscode-input-background)] to-[var(--vscode-editor-background)] backdrop-blur-sm transition-all duration-300 hover:border-[var(--vscode-focusBorder)] hover:shadow-lg hover:shadow-gray-500/20 overflow-hidden">
+                <div class="px-6 py-6 flex gap-4 items-start">
+                    <!-- Icon Container -->
+                    <div class="flex-shrink-0 p-3 rounded-lg bg-gradient-to-br from-gray-500/20 to-gray-600/10 flex items-center justify-center">
+                        <svg class="w-7 h-7 text-gray-300" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                            <path fill-rule="evenodd" d="M4 5.78571C4 4.80909 4.78639 4 5.77778 4H18.2222C19.2136 4 20 4.80909 20 5.78571V15H4V5.78571ZM12 12c0-.5523.4477-1 1-1h2c.5523 0 1 .4477 1 1s-.4477 1-1 1h-2c-.5523 0-1-.4477-1-1ZM8.27586 6.31035c.38089-.39993 1.01387-.41537 1.4138-.03449l2.62504 2.5c.1981.18875.3103.45047.3103.72414 0 .27368-.1122.5354-.3103.7241l-2.62504 2.5c-.39993.3809-1.03291.3655-1.4138-.0344-.38088-.4-.36544-1.033.03449-1.4138L10.175 9.5 8.31035 7.72414c-.39993-.38089-.41537-1.01386-.03449-1.41379Z" clip-rule="evenodd"/>
+                            <path d="M2 17v1c0 1.1046.89543 2 2 2h16c1.1046 0 2-.8954 2-2v-1H2Z"/>
+                        </svg>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold mb-1.5 text-white">Privacy First</p>
+                        <p class="text-xs leading-relaxed opacity-70">API keys are stored securely in VS Code's secret storage. Your data never leaves your machine.</p>
                     </div>
                 </div>
             </div>
-            <button id="getStartedBtn" class="w-full max-w-sm px-4 py-2.5">Get Started</button>
+
+            <!-- Get Started Button -->
+            <button id="getStartedBtn" class="w-full max-w-sm px-6 py-3 rounded-lg font-semibold text-sm bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] transition-colors shadow-lg hover:shadow-xl flex items-center justify-center gap-2">
+                <i class="fas fa-play"></i>
+                <span>Get Started</span>
+            </button>
+
+            <!-- Footer Text -->
+            <p class="text-xs opacity-50 mt-8 text-center">No account needed • 100% private • Bring your on keys </p>
         </div>
     </div>
 
     <!-- Setup Screen -->
-    <div id="setupScreen" style="display: none;" class="flex flex-col h-full p-6">
+    <div id="setupScreen" style="display: none;" class="flex flex-col h-full p-6 bg-[var(--vscode-editor-background)]">
         <div class="flex flex-col items-center justify-center w-full flex-1">
-            <h1 class="screen-heading mb-6">Configure API Key</h1>
-            <div class="w-full max-w-sm flex flex-col gap-5">
-                <div>
-                    <label class="block text-xs font-semibold mb-2 opacity-70">AI Provider</label>
-                    <select id="providerSelect" class="w-full px-3 py-2">
-                        <option value="gemini">Google Gemini</option>
-                        <option value="openai" disabled>OpenAI (Coming Soon)</option>
-                    </select>
+            <!-- Header -->
+            <div class="text-center mb-10 w-full max-w-sm">
+                <h1 class="text-2xl font-bold mb-2">Configure API Key</h1>
+                <p class="text-xs opacity-60">Enter your AI provider credentials to get started</p>
+            </div>
+
+            <!-- Form Container -->
+            <div class="w-full max-w-sm">
+                <!-- AI Provider Section -->
+                <div class="mb-8">
+                    <label class="block text-sm font-semibold mb-3 opacity-80">AI Provider</label>
+                    <div class="flex items-center">
+                        <select id="providerSelect" class="w-full px-4 py-2.5 rounded bg-[var(--vscode-input-background)] border border-[var(--vscode-input-border)] text-sm focus:outline-none focus:border-[var(--vscode-focusBorder)] transition-colors">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="openai" disabled>OpenAI (Coming Soon)</option>
+                        </select>
+                        <div class="ml-3 text-[#CACDD3]">
+                            <i class="fas fa-robot text-lg"></i>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold mb-2 opacity-70">API Key</label>
-                    <div class="relative">
-                        <input id="apiKeyInput" type="password" class="w-full px-3 py-2 pr-10" placeholder="Enter your API key..." />
-                        <button id="togglePasswordBtn" type="button" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 bg-transparent hover:bg-transparent border-0 text-sm p-0 h-6 w-6 flex items-center justify-center text-lg">
+
+                <!-- API Key Section -->
+                <div class="mb-8">
+                    <label class="block text-sm font-semibold mb-3 opacity-80">API Key</label>
+                    <div class="relative flex items-center">
+                        <input id="apiKeyInput" type="password" class="w-full px-4 py-2.5 pr-10 rounded bg-[var(--vscode-input-background)] border border-[var(--vscode-input-border)] text-sm placeholder-opacity-40 focus:outline-none focus:border-[var(--vscode-focusBorder)] transition-colors" placeholder="Paste your API key here..." />
+                        <button id="togglePasswordBtn" type="button" class="absolute right-3 opacity-50 hover:opacity-100 bg-transparent hover:bg-transparent border-0 text-sm p-0 h-5 w-5 flex items-center justify-center transition-opacity">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
+                    <p class="text-xs opacity-50 mt-2">Your credentials are stored securely in VS Code</p>
                 </div>
-                <div class="flex gap-2 mt-2">
-                    <button id="saveKeyBtn" class="flex-1 px-4 py-2">Save Key</button>
-                    <button id="cancelSetupBtn" class="flex-1 px-4 py-2 btn-secondary">Cancel</button>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3 mt-8">
+                    <button id="saveKeyBtn" class="flex-1 px-4 py-2.5 rounded font-semibold text-sm bg-[var(--vscode-button-background)] hover:bg-[var(--vscode-button-hoverBackground)] text-[var(--vscode-button-foreground)] transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-check"></i>
+                        <span>Save Key</span>
+                    </button>
+                    <button id="cancelSetupBtn" class="flex-1 px-4 py-2.5 rounded font-semibold text-sm bg-[var(--vscode-input-background)] hover:bg-[var(--vscode-input-border)] text-[var(--vscode-foreground)] transition-colors flex items-center justify-center gap-2">
+                        <i class="fas fa-times"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
-                <div id="setupSpinner" style="display: none;" class="flex flex-col items-center justify-center gap-2 mt-4">
+
+                <!-- Loading Spinner -->
+                <div id="setupSpinner" style="display: none;" class="flex flex-col items-center justify-center gap-3 mt-8">
                     <div class="w-8 h-8 border-3 border-[var(--vscode-focusBorder)] border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-xs opacity-60">Saving...</p>
+                    <p class="text-xs opacity-60">Saving your API key...</p>
                 </div>
+            </div>
+        </div>
+    </div>
             </div>
         </div>
     </div>
@@ -790,8 +887,8 @@ class SidebarProvider {
     <!-- Chat Screen -->
     <div id="chatScreen" style="display: none;" class="flex flex-col h-full">
         <div class="px-4 py-3 border-b border-[var(--vscode-input-border)] flex justify-between items-center">
-            <h2 class="text-xs font-bold uppercase tracking-wide opacity-70">Chat</h2>
-            <button id="menuBtn" class="opacity-70 hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg" title="Menu">
+            <h2 class="text-sm font-bold uppercase tracking-wide">Chat</h2>
+            <button id="menuBtn" class="bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg" title="Menu">
                 <i class="fas fa-bars"></i>
             </button>
         </div>
@@ -803,21 +900,21 @@ class SidebarProvider {
         <div id="menuSidebar" style="display: none;" class="absolute top-0 left-0 h-full w-full bg-[var(--vscode-editor-background)] border-r border-[var(--vscode-input-border)] flex flex-col z-50 shadow-lg">
             <!-- Header -->
             <div class="px-4 py-3 border-b border-[var(--vscode-input-border)] flex justify-between items-center">
-                <h3 class="text-sm font-bold flex items-center gap-2">
-                    <i class="fas fa-comments text-[#60a5fa]"></i>
-                    <span>Conversations</span>
+                <h3 class="text-md font-bold flex items-center gap-2">
+                    <i class="fas fa-comments text-[#CACDD3]"></i>
+                    <span>CONVERSATIONS</span>
                 </h3>
-                <button id="closeMenuBtn" class="opacity-70 hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg">
+                <button id="closeMenuBtn" class="hover:opacity-100 bg-transparent hover:bg-transparent border-0 p-1 h-6 w-6 flex items-center justify-center text-lg">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
 
             <!-- Conversations List -->
-            <div id="historyList" class="flex-1 overflow-y-auto px-2"></div>
+            <div id="historyList" class="flex-1 overflow-y-auto px-3 py-2 w-full"></div>
 
             <!-- Footer - Settings & New Chat -->
-            <div class="px-2 py-3 border-t border-[var(--vscode-input-border)] flex items-center justify-between gap-2">
-                <button id="menuSettingsBtn" class="px-4 py-2 text-sm font-semibold opacity-70 hover:opacity-100 hover:bg-opacity-20 hover:bg-white rounded transition-colors flex items-center gap-2">
+            <div class="px-3 py-3 border-t border-[var(--vscode-input-border)] flex items-center justify-between gap-2">
+                <button id="menuSettingsBtn" class="px-4 py-2 text-sm font-semibold hover:opacity-100 hover:bg-opacity-20 hover:bg-white rounded transition-colors flex items-center gap-2">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
                 </button>
@@ -828,7 +925,7 @@ class SidebarProvider {
             </div>
         </div>
 
-        <div id="chatMessages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-3 flex flex-col gap-0">
             <div id="welcomeTemplate">
                 <div class="welcome-icon"><i class="fas fa-lightbulb"></i></div>
                 <div class="welcome-text">
@@ -837,10 +934,10 @@ class SidebarProvider {
                 </div>
             </div>
         </div>
-        <div class="px-4 py-3 border-t border-[var(--vscode-input-border)] bg-[rgba(0,0,0,0.2)]">
-            <div class="flex gap-2 items-flex-end">
-                <textarea id="messageInput" class="flex-1 px-3 py-2 text-sm resize-none" rows="1" placeholder="Type your query here..."></textarea>
-                <button id="sendBtn" class="px-3 py-2 flex items-center justify-center flex-shrink-0 text-lg h-10 rounded" title="Send (Shift+Enter for new line)">
+        <div class="px-4 py-4 border-t border-[var(--vscode-input-border)] bg-[var(--vscode-editor-background)]">
+            <div class="flex gap-3 items-flex-end">
+                <textarea id="messageInput" class="flex-1 text-sm resize-none px-3 py-2" rows="1" placeholder="Type your message..."></textarea>
+                <button id="sendBtn" title="Send (Shift+Enter for new line)">
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
@@ -874,6 +971,8 @@ class SidebarProvider {
         let currentProvider = "gemini";
         let passwordVisible = false;
         let isNewChatSession = true;  // Track if current chat is a new session
+        let isMenuOpen = false;  // Track menu state to prevent double-click issues
+        let isInitialLoad = true;  // Track if extension just started (for auto-loading last conversation)
 
         showScreen("loading");
         vscode.postMessage({ command: "getApiKey" });
@@ -885,7 +984,10 @@ class SidebarProvider {
         };
         
         // Menu handlers
-        menuBtn.onclick = () => toggleMenu();
+        menuBtn.onclick = (e) => {
+            e.stopPropagation();
+            toggleMenu();
+        };
         closeMenuBtn.onclick = () => closeMenu();
         menuOverlay.onclick = () => closeMenu();
         newChatBtn.onclick = () => {
@@ -911,11 +1013,12 @@ class SidebarProvider {
         };
 
         function toggleMenu() {
-            if (menuSidebar.style.display === 'flex') {
+            if (isMenuOpen) {
                 closeMenu();
             } else {
                 menuSidebar.style.display = 'flex';
                 menuOverlay.style.display = 'block';
+                isMenuOpen = true;
                 loadHistoryList();
             }
         }
@@ -923,6 +1026,7 @@ class SidebarProvider {
         function closeMenu() {
             menuSidebar.style.display = 'none';
             menuOverlay.style.display = 'none';
+            isMenuOpen = false;
         }
 
         function loadHistoryList() {
@@ -934,30 +1038,56 @@ class SidebarProvider {
             historyList.innerHTML = '';
             
             if (conversations.length === 0) {
-                historyList.innerHTML = '<div class="px-4 py-8 text-center text-xs opacity-50 flex flex-col items-center gap-2"><i class="fas fa-comments text-lg opacity-30"></i><span>No conversations yet</span></div>';
+                historyList.innerHTML = '<div class="w-full py-8 text-center text-sm opacity-50 flex flex-col items-center gap-2"><i class="fas fa-comments text-xl opacity-30"></i><span>No conversations yet</span></div>';
                 return;
             }
 
             conversations.forEach((conv, index) => {
                 const container = document.createElement('div');
-                container.className = 'w-full mx-auto my-1 rounded transition-all group relative flex items-center';
+                container.className = 'w-full mb-2 rounded-lg transition-all group relative flex items-center overflow-hidden';
+                container.style.backgroundColor = 'var(--vscode-input-background)';
+                container.style.border = '1px solid transparent';
+                container.style.boxShadow = 'none';
+                
+                container.addEventListener('mouseenter', () => {
+                    container.style.border = '1px solid var(--vscode-focusBorder)';
+                });
+                container.addEventListener('mouseleave', () => {
+                    container.style.border = '1px solid transparent';
+                });
                 
                 const btn = document.createElement('button');
-                btn.className = 'w-full px-3 py-2 text-left text-sm rounded transition-all border border-[var(--vscode-input-border)] opacity-80 flex flex-col gap-1 hover:opacity-100 hover:border-[var(--vscode-focusBorder)] hover:bg-opacity-30';
+                btn.className = 'w-full px-3 py-3 text-left flex-1 rounded-lg transition-all flex flex-col gap-1.5 focus:outline-none';
+                btn.style.backgroundColor = 'transparent';
+                btn.style.border = 'none';
+                btn.style.color = 'var(--vscode-editor-foreground)';
                 const dateStr = new Date(conv.timestamp).toLocaleDateString();
                 const timeStr = new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                btn.innerHTML = '<div class="truncate font-medium text-xs opacity-90">' + conv.preview + '</div><div class="text-xs opacity-50">' + dateStr + ' ' + timeStr + '</div>';
+                btn.innerHTML = '<div class="truncate font-semibold text-sm leading-tight" style="color: var(--vscode-editor-foreground);">' + conv.preview + '</div><div class="text-xs" style="color: var(--vscode-editor-foreground); opacity: 0.7; display: flex; gap: 0.25rem;"><span>' + dateStr + '</span><span>•</span><span>' + timeStr + '</span></div>';
                 btn.onclick = () => {
                     vscode.postMessage({ command: "loadConversation", conversationIndex: conv.index, provider: currentProvider });
                 };
                 
                 const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'absolute right-2 p-1.5 text-xs opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400';
+                deleteBtn.className = 'flex-shrink-0 p-2.5 text-sm transition-all rounded-md';
+                deleteBtn.style.backgroundColor = 'transparent';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.color = 'var(--vscode-editor-foreground)';
+                deleteBtn.style.opacity = '1';
                 deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
                     vscode.postMessage({ command: "deleteConversation", conversationIndex: conv.index, provider: currentProvider });
                 };
+                
+                deleteBtn.addEventListener('mouseenter', () => {
+                    deleteBtn.style.color = '#ef4444';
+                    deleteBtn.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                });
+                deleteBtn.addEventListener('mouseleave', () => {
+                    deleteBtn.style.color = 'var(--vscode-editor-foreground)';
+                    deleteBtn.style.backgroundColor = 'transparent';
+                });
                 
                 container.appendChild(btn);
                 container.appendChild(deleteBtn);
@@ -977,7 +1107,6 @@ class SidebarProvider {
             if (name === 'setup') setupScreen.style.display = 'flex';
             if (name === 'chat') {
                 chatScreen.style.display = 'flex';
-                showWelcomeTemplate();
                 messageInput.focus();
             }
         }
@@ -1154,6 +1283,8 @@ class SidebarProvider {
                         if (msg.isDeleted) {
                             showScreen("welcome");
                         } else {
+                            // Request history and show chat screen
+                            vscode.postMessage({ command: "getHistory", provider: currentProvider });
                             showScreen("chat");
                         }
                     }
@@ -1173,8 +1304,9 @@ class SidebarProvider {
                     break;
                 case "historyResponse":
                     renderHistoryList(msg.conversations);
-                    // Auto-load last conversation on extension start
-                    if (msg.conversations && msg.conversations.length > 0 && isNewChatSession) {
+                    // Auto-load last conversation only on initial extension load
+                    if (msg.conversations && msg.conversations.length > 0 && isInitialLoad) {
+                        isInitialLoad = false;  // Set to false after first load
                         const lastConversation = msg.conversations[0]; // First item is most recent (reversed in backend)
                         vscode.postMessage({ command: "loadConversation", conversationIndex: lastConversation.index, provider: currentProvider });
                     }
@@ -1193,7 +1325,6 @@ class SidebarProvider {
                     chatMessages.innerHTML = '';
                     isNewChatSession = true;
                     showWelcomeTemplate();
-                    closeMenu();
                     break;
                 case "historyCleared":
                     if (msg.success) {
