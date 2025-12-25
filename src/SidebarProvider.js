@@ -6,7 +6,7 @@ class SidebarProvider {
     #view;
     #extensionUri;
     #context;
-    #currentSessionMessages = []; // Track only current session messages for AI
+    #currentSessionMessages = [];
 
     constructor(extensionUri, context) {
         this.#extensionUri = extensionUri;
@@ -703,7 +703,6 @@ class SidebarProvider {
 
         #welcomeTemplate .welcome-icon {
             font-size: 3rem;
-            opacity: 0.4;
         }
 
         #welcomeTemplate .welcome-text {
@@ -714,11 +713,9 @@ class SidebarProvider {
         #welcomeTemplate .welcome-title {
             font-weight: 600;
             margin-bottom: 8px;
-            opacity: 0.8;
         }
 
         #welcomeTemplate .welcome-subtitle {
-            opacity: 0.6;
             font-size: 0.85rem;
             max-width: 250px;
             line-height: 1.4;

@@ -9,7 +9,7 @@
     "categories": [
         "Other"
     ],
-    "main": "./extension.js",
+    "main": "./src/extension.js",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
