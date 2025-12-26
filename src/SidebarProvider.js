@@ -1,6 +1,6 @@
 const vscode = require("vscode");
 const { getNonce } = require("./getNonce");
-const { generateResponse } = require("./services/gemini");
+const { llm } = require("./services/gemini");
 
 class SidebarProvider {
     #view;
@@ -139,9 +139,12 @@ class SidebarProvider {
             // Only send current session messages to AI (not previous sessions)
             const history = this.#currentSessionMessages || [];
 
+            // Get workspace path
+            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || null;
+
             let response;
             if (provider === "gemini") {
-                response = await generateResponse(apiKey, message, history);
+                response = await llm(message, history, apiKey, workspacePath);
             } else if (provider === "openai") {
                 response = "OpenAI integration coming soon...";
             } else {
@@ -156,11 +159,11 @@ class SidebarProvider {
                 this.#currentSessionMessages = [];
             this.#currentSessionMessages.push({
                 role: "user",
-                content: message,
+                parts: [{ text: message }],
             });
             this.#currentSessionMessages.push({
                 role: "model",
-                content: response,
+                parts: [{ text: response }],
             });
 
             this.#view?.webview.postMessage({
@@ -169,10 +172,24 @@ class SidebarProvider {
                 sender: "assistant",
             });
         } catch (error) {
-            console.error("Chat message error:", error);
+            console.error("Chat message error:", {
+                message: error.message,
+                stack: error.stack,
+                provider: provider,
+            });
+
+            let errorMessage = error.message;
+            if (error.message.includes("fetch failed")) {
+                errorMessage =
+                    "Network error: Failed to connect to Gemini API. Please check your internet connection.";
+            } else if (error.message.includes("API key")) {
+                errorMessage =
+                    "API Key error: Please verify your API key is valid.";
+            }
+
             this.#view?.webview.postMessage({
                 command: "messageReceived",
-                message: `Error: ${error.message}`,
+                message: `Error: ${errorMessage}`,
                 sender: "system",
             });
         }
@@ -259,11 +276,15 @@ class SidebarProvider {
                     const firstUserMessage = conv.messages.find(
                         (m) => m.role === "user"
                     );
+                    // Handle both old (content) and new (parts) formats
+                    const messageText =
+                        firstUserMessage?.content ||
+                        (firstUserMessage?.parts &&
+                            firstUserMessage.parts[0]?.text) ||
+                        "";
                     const preview =
-                        (firstUserMessage?.content || "").substring(0, 40) +
-                        ((firstUserMessage?.content || "").length > 40
-                            ? "..."
-                            : "");
+                        messageText.substring(0, 40) +
+                        (messageText.length > 40 ? "..." : "");
                     return {
                         index: displayIndex,
                         preview: preview,
@@ -303,12 +324,26 @@ class SidebarProvider {
             // Load the conversation
             if (conversations[originalIndex]) {
                 const conversation = conversations[originalIndex];
+
+                // Normalize messages format (convert old content format to new parts format if needed)
+                const normalizedMessages = conversation.messages.map((msg) => {
+                    if (msg.parts) {
+                        return msg;
+                    } else if (msg.content) {
+                        return {
+                            role: msg.role,
+                            parts: [{ text: msg.content }],
+                        };
+                    }
+                    return msg;
+                });
+
                 // Set session messages to loaded conversation
-                this.#currentSessionMessages = conversation.messages;
+                this.#currentSessionMessages = normalizedMessages;
 
                 this.#view?.webview.postMessage({
                     command: "conversationLoaded",
-                    messages: conversation.messages,
+                    messages: normalizedMessages,
                 });
             }
         } catch (error) {
@@ -1313,7 +1348,9 @@ class SidebarProvider {
                     chatMessages.innerHTML = '';
                     isNewChatSession = false;
                     msg.messages.forEach(msgItem => {
-                        addMessage(msgItem.content, msgItem.role === 'user' ? 'user' : 'assistant');
+                        // Handle both old (content) and new (parts) formats
+                        const messageText = msgItem.content || (msgItem.parts && msgItem.parts[0]?.text) || '';
+                        addMessage(messageText, msgItem.role === 'user' ? 'user' : 'assistant');
                     });
                     closeMenu();
                     messageInput.focus();
