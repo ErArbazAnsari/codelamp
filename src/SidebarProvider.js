@@ -140,7 +140,8 @@ class SidebarProvider {
             const history = this.#currentSessionMessages || [];
 
             // Get workspace path
-            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || null;
+            const workspacePath =
+                vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || null;
 
             let response;
             if (provider === "gemini") {
@@ -1076,10 +1077,11 @@ class SidebarProvider {
 
             conversations.forEach((conv, index) => {
                 const container = document.createElement('div');
-                container.className = 'w-full mb-2 rounded-lg transition-all group relative flex items-center overflow-hidden';
+                container.className = 'w-full mb-2 rounded-lg transition-all group relative flex items-center justify-between gap-2 overflow-visible';
                 container.style.backgroundColor = 'var(--vscode-input-background)';
                 container.style.border = '1px solid transparent';
                 container.style.boxShadow = 'none';
+                container.style.minHeight = '60px';
                 
                 container.addEventListener('mouseenter', () => {
                     container.style.border = '1px solid var(--vscode-focusBorder)';
@@ -1089,10 +1091,11 @@ class SidebarProvider {
                 });
                 
                 const btn = document.createElement('button');
-                btn.className = 'w-full px-3 py-3 text-left flex-1 rounded-lg transition-all flex flex-col gap-1.5 focus:outline-none';
+                btn.className = 'px-3 py-3 text-left flex-1 rounded-lg transition-all flex flex-col gap-1.5 focus:outline-none min-w-0';
                 btn.style.backgroundColor = 'transparent';
                 btn.style.border = 'none';
                 btn.style.color = 'var(--vscode-editor-foreground)';
+                btn.style.textAlign = 'left';
                 const dateStr = new Date(conv.timestamp).toLocaleDateString();
                 const timeStr = new Date(conv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 btn.innerHTML = '<div class="truncate font-semibold text-sm leading-tight" style="color: var(--vscode-editor-foreground);">' + conv.preview + '</div><div class="text-xs" style="color: var(--vscode-editor-foreground); opacity: 0.7; display: flex; gap: 0.25rem;"><span>' + dateStr + '</span><span>•</span><span>' + timeStr + '</span></div>';
@@ -1106,6 +1109,12 @@ class SidebarProvider {
                 deleteBtn.style.border = 'none';
                 deleteBtn.style.color = 'var(--vscode-editor-foreground)';
                 deleteBtn.style.opacity = '1';
+                deleteBtn.style.minWidth = '40px';
+                deleteBtn.style.height = '40px';
+                deleteBtn.style.display = 'flex';
+                deleteBtn.style.alignItems = 'center';
+                deleteBtn.style.justifyContent = 'center';
+                deleteBtn.style.flexShrink = '0';
                 deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();

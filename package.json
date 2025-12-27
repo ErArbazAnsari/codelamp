@@ -2,7 +2,7 @@
     "name": "codelamp",
     "displayName": "codelamp",
     "description": "your personal coder helper",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "publisher": "arbazansari",
     "icon": "./media/logo.jpg",
     "repository": {
@@ -31,7 +31,8 @@
                 {
                     "type": "webview",
                     "id": "codelamp.sidebarWebView",
-                    "name": "Your Personal AI Code Assistant"
+                    "name": "Your Personal AI Code Assistant",
+                    "icon": "./media/logo.svg"
                 }
             ]
         },
