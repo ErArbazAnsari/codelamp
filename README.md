@@ -4,10 +4,7 @@ Your personal AI coding buddy right inside VS Code. Ask questions, get code revi
 
 ## Demonstration Video
 
-<video width="100%" controls poster="media/poster.png">
-  <source src="media/codelamp.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+<iframe width="100%" height="400" src="https://www.youtube.com/embed/TfemHJc5pKM" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## Getting Started
 
