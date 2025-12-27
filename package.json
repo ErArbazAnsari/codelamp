@@ -2,7 +2,7 @@
     "name": "codelamp",
     "displayName": "codelamp",
     "description": "your personal coder helper",
-    "version": "1.6.2",
+    "version": "1.6.3",
     "publisher": "arbazansari",
     "icon": "./media/logo.jpg",
     "repository": {
