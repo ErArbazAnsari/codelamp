@@ -1104,7 +1104,7 @@ class SidebarProvider {
                 };
                 
                 const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'flex-shrink-0 p-2.5 text-sm transition-all rounded-md';
+                deleteBtn.className = 'flex-shrink-0 p-2 text-sm transition-all rounded-md mr-2';
                 deleteBtn.style.backgroundColor = 'transparent';
                 deleteBtn.style.border = 'none';
                 deleteBtn.style.color = 'var(--vscode-editor-foreground)';
