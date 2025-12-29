@@ -1,5 +1,5 @@
 const vscode = require("vscode");
-const { SidebarProvider } = require("./SidebarProvider");
+const { SidebarProvider } = require("./utils/SidebarProvider");
 
 function activate(context) {
     console.log("CodeLamp extension activating...");

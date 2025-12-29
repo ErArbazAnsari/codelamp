@@ -23,7 +23,6 @@ const {
     readFile,
     writeFile,
     setWorkspacePath,
-    getWorkspacePath,
 } = require("./tools.js");
 
 // Tool functions mapping
@@ -56,13 +55,15 @@ const toolDeclarations = [
     },
     {
         name: "listFiles",
-        description: "List all JavaScript/TypeScript files in a directory. If no directory specified, lists files from the current workspace root.",
+        description:
+            "List all JavaScript/TypeScript files in a directory. If no directory specified, lists files from the current workspace root.",
         parameters: {
             type: Type.OBJECT,
             properties: {
                 directory: {
                     type: Type.STRING,
-                    description: "Directory path to scan (relative to workspace or absolute). Leave empty to scan workspace root.",
+                    description:
+                        "Directory path to scan (relative to workspace or absolute). Leave empty to scan workspace root.",
                 },
             },
             required: [],
@@ -70,13 +71,15 @@ const toolDeclarations = [
     },
     {
         name: "readFile",
-        description: "Read a file's content from the current workspace. Supports both relative and absolute paths.",
+        description:
+            "Read a file's content from the current workspace. Supports both relative and absolute paths.",
         parameters: {
             type: Type.OBJECT,
             properties: {
                 file_path: {
                     type: Type.STRING,
-                    description: "Path to the file (relative to workspace root or absolute)",
+                    description:
+                        "Path to the file (relative to workspace root or absolute)",
                 },
             },
             required: ["file_path"],
@@ -84,13 +87,15 @@ const toolDeclarations = [
     },
     {
         name: "writeFile",
-        description: "Write or update file content in the current workspace. Creates directories if needed.",
+        description:
+            "Write or update file content in the current workspace. Creates directories if needed.",
         parameters: {
             type: Type.OBJECT,
             properties: {
                 file_path: {
                     type: Type.STRING,
-                    description: "Path to the file to write (relative to workspace root or absolute)",
+                    description:
+                        "Path to the file to write (relative to workspace root or absolute)",
                 },
                 content: {
                     type: Type.STRING,
@@ -103,7 +108,13 @@ const toolDeclarations = [
 ];
 
 // MAIN LLM FUNCTION
-async function llm(input, conversationHistory = [], apiKey, workspacePath = null) {
+async function llm(
+    input,
+    conversationHistory = [],
+    apiKey,
+    workspacePath = null,
+    onStreamChunk = null
+) {
     try {
         if (!apiKey) {
             throw new Error("API key is required");
@@ -173,6 +184,21 @@ Use available tools to help users effectively.`,
                     throw err;
                 });
 
+            // If streaming callback provided, stream the text
+            if (onStreamChunk && result.text) {
+                // Add a small delay to ensure loading spinner is visible
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                
+                const text = result.text;
+                const chunkSize = 3; // Stream in smaller chunks for smoother effect
+                for (let i = 0; i < text.length; i += chunkSize) {
+                    const chunk = text.substring(i, i + chunkSize);
+                    onStreamChunk(chunk);
+                    // Delay for visible streaming effect
+                    await new Promise((resolve) => setTimeout(resolve, 20));
+                }
+            }
+
             // Process ALL function calls at once
             if (result.functionCalls?.length > 0) {
                 // Execute all function calls
@@ -225,8 +251,20 @@ Use available tools to help users effectively.`,
 }
 
 // UTILITY FUNCTION FOR CONVERSATION
-async function chat(message, conversationHistory = [], apiKey, workspacePath = null) {
-    return llm(message, conversationHistory, apiKey, workspacePath);
+async function chat(
+    message,
+    conversationHistory = [],
+    apiKey,
+    workspacePath = null,
+    onStreamChunk = null
+) {
+    return llm(
+        message,
+        conversationHistory,
+        apiKey,
+        workspacePath,
+        onStreamChunk
+    );
 }
 
 // EXPORTS

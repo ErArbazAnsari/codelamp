@@ -18,17 +18,17 @@ function getWorkspacePath() {
 // Function to resolve path (relative to workspace or absolute)
 function resolvePath(filePath) {
     if (!filePath) return null;
-    
+
     // If it's already absolute, return as is
     if (path.isAbsolute(filePath)) {
         return filePath;
     }
-    
+
     // If workspace path is set, resolve relative to it
     if (WORKSPACE_PATH) {
         return path.join(WORKSPACE_PATH, filePath);
     }
-    
+
     // Otherwise return the path as is
     return filePath;
 }
@@ -82,7 +82,7 @@ async function listFiles({ directory = "." }) {
     try {
         // Resolve path relative to workspace
         const resolvedPath = resolvePath(directory || ".");
-        
+
         if (!resolvedPath) {
             return { error: "Directory path is required" };
         }
